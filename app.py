@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+import firebase_config
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
@@ -10,12 +11,30 @@ from sqlalchemy.exc import IntegrityError
 import random
 import string
 import re
+import firebase_admin
+from firebase_admin import credentials, firestore, auth
+import requests
+import json
 
+# Initialize Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///mathquiz.db'
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+
+# Khởi tạo Firebase Admin SDK
+cred = credentials.Certificate("serviceAccountKey.json")
+firebase_admin.initialize_app(cred)
+firestore_client = firestore.client()
+
+# Configure session cookie settings
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1)
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 # Models
 class User(db.Model):
     id = db.Column(db.Integer , primary_key=True)
@@ -92,6 +111,7 @@ class StudentAnswer(db.Model):
     quiz = db.relationship('Quiz', backref='student_answers', lazy=True)
     student = db.relationship('User', backref='student_answers', lazy=True)
     question = db.relationship('Question', backref='student_answers', lazy=True)
+
 def init_db():
     with app.app_context():
         # Drop all tables
@@ -555,6 +575,7 @@ def take_quiz(quiz_id):
                 print(f"- {a.answer_text}")
 
     return render_template('take_quiz.html', quiz=quiz, questions=questions)
+
 @app.route('/quiz/submit/<int:quiz_id>', methods=['POST'])
 def submit_quiz(quiz_id):
     if 'user_id' not in session or session['role'] != 'student':
@@ -868,6 +889,125 @@ def toggle_quiz_visibility(quiz_id):
     status = "công khai" if quiz.is_public else "riêng tư"
     flash(f'Trạng thái bài kiểm tra đã được thay đổi thành {status}!')
     return redirect(url_for('manage_quizzes'))
+
+@app.route('/login/google')
+def login_google():
+    return render_template('login_google.html')
+
+@app.route('/login/google/callback', methods=['POST'])
+def google_callback():
+    try:
+        # Lấy token ID từ request
+        id_token = request.json.get('idToken')
+        
+        if not id_token:
+            return jsonify({'success': False, 'error': 'Không tìm thấy token'}), 400
+            
+        # Xác thực token với Firebase
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+        email = decoded_token['email']
+        name = decoded_token.get('name', email.split('@')[0])
+        
+        # Kiểm tra xem người dùng đã tồn tại chưa
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            # Tạo người dùng mới
+            user = User(
+                email=email,
+                username=name,
+                password=generate_password_hash(str(random.getrandbits(128))),  # Tạo mật khẩu ngẫu nhiên
+                role='student'  # Mặc định là student
+            )
+            db.session.add(user)
+            db.session.commit()
+            
+            # Tạo profile cho người dùng mới
+            profile = UserProfile(user_id=user.id)
+            db.session.add(profile)
+            db.session.commit()
+
+        # Đăng nhập người dùng
+        session['user_id'] = user.id
+        session['username'] = user.username
+        session['role'] = user.role
+        return jsonify({'success': True, 'redirect': url_for('home')})
+        
+    except Exception as e:
+        print(f"Error in google_callback: {str(e)}")  # Log lỗi
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/register/google/callback', methods=['POST'])
+def register_google_callback():
+    try:
+        data = request.get_json()
+        id_token = data.get('idToken')
+        role = data.get('role')
+
+        if not id_token or not role:
+            return jsonify({'success': False, 'error': 'Thiếu thông tin cần thiết'}), 400
+
+        # Xác thực token với Firebase
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+        email = decoded_token['email']
+        name = decoded_token.get('name', email.split('@')[0])
+
+        # Kiểm tra xem email đã tồn tại chưa
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            return jsonify({'success': False, 'error': 'Email đã được sử dụng'}), 400
+
+        # Tạo username từ email nếu không có name
+        username = name
+        # Nếu username đã tồn tại, thêm số ngẫu nhiên
+        while User.query.filter_by(username=username).first():
+            username = f"{name}{random.randint(1000, 9999)}"
+
+        # Tạo mật khẩu ngẫu nhiên cho tài khoản
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+
+        # Tạo user mới
+        new_user = User(
+            email=email,
+            username=username,
+            password=generate_password_hash(password),
+            role=role
+        )
+
+        db.session.add(new_user)
+        db.session.flush()  # Lấy ID của user mới
+
+        # Tạo profile cho user
+        profile = UserProfile(
+            user_id=new_user.id,
+            full_name=name
+        )
+        db.session.add(profile)
+        db.session.commit()
+
+        # Đăng nhập người dùng
+        session['user_id'] = new_user.id
+        session['username'] = new_user.username
+        session['role'] = new_user.role
+
+        # Chuyển hướng dựa trên role
+        redirect_url = url_for('teacher_dashboard') if role == 'teacher' else url_for('home')
+
+        return jsonify({
+            'success': True,
+            'redirect': redirect_url
+        })
+
+    except auth.InvalidIdTokenError:
+        return jsonify({'success': False, 'error': 'Token không hợp lệ'}), 401
+    except auth.ExpiredIdTokenError:
+        return jsonify({'success': False, 'error': 'Token đã hết hạn'}), 401
+    except auth.RevokedIdTokenError:
+        return jsonify({'success': False, 'error': 'Token đã bị thu hồi'}), 401
+    except Exception as e:
+        print(f"Error in register_google_callback: {str(e)}")
+        return jsonify({'success': False, 'error': 'Có lỗi xảy ra khi đăng ký'}), 500
 
 def main():
     with app.app_context():

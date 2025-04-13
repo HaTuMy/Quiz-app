@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}404 - Không tìm thấy trang{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-box">
+        <div class="error-header">
+            <i class="fas fa-exclamation-circle"></i>
+            <h1>404</h1>
+            <h2>Không tìm thấy trang</h2>
+        </div>
+        <div class="error-content">
+            <p>Xin lỗi, trang bạn đang tìm kiếm không tồn tại hoặc đã bị di chuyển.</p>
+            <div class="error-actions">
+                <a href="{{ url_for('home') }}" class="btn-home">
+                    <i class="fas fa-home"></i> Về trang chủ
+                </a>
+                <a href="javascript:history.back()" class="btn-back">
+                    <i class="fas fa-arrow-left"></i> Quay lại
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.error-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: linear-gradient(135deg, #f6f9fc 0%, #eef2f7 100%);
+}
+
+.error-box {
+    width: 100%;
+    max-width: 500px;
+    background: white;
+    padding: 3rem;
+    border-radius: 20px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+    text-align: center;
+}
+
+.error-header {
+    margin-bottom: 2rem;
+}
+
+.error-header i {
+    font-size: 4rem;
+    color: #667eea;
+    margin-bottom: 1rem;
+}
+
+.error-header h1 {
+    font-size: 5rem;
+    color: #2d3748;
+    margin: 0;
+    line-height: 1;
+}
+
+.error-header h2 {
+    font-size: 1.8rem;
+    color: #4a5568;
+    margin: 0.5rem 0 0;
+    font-weight: 600;
+}
+
+.error-content {
+    color: #718096;
+    font-size: 1.1rem;
+    line-height: 1.6;
+}
+
+.error-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 2rem;
+}
+
+.btn-home, .btn-back {
+    padding: 0.8rem 1.5rem;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 500;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.btn-home {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btn-back {
+    background: #f7fafc;
+    color: #4a5568;
+    border: 1px solid #e2e8f0;
+}
+
+.btn-home:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-back:hover {
+    background: #edf2f7;
+    border-color: #cbd5e0;
+}
+</style>
+{% endblock %} 

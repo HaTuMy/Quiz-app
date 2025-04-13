@@ -34,12 +34,82 @@
                 <i class="fas fa-sign-in-alt"></i> Đăng nhập
             </button>
         </form>
+        
+        <div class="divider">
+            <span>hoặc</span>
+        </div>
+        
+        <button onclick="signInWithGoogle()" class="btn-google">
+            <img src="https://www.google.com/favicon.ico" alt="Google">
+            Đăng nhập với Google
+        </button>
+        
         <div class="auth-footer">
             <p>Chưa có tài khoản? <a href="{{ url_for('register') }}"><i class="fas fa-user-plus"></i> Đăng ký</a></p>
             <p><a href="{{ url_for('forgot_password') }}"><i class="fas fa-key"></i> Quên mật khẩu?</a></p>
         </div>
     </div>
 </div>
+
+<!-- Firebase App (the core Firebase SDK) -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+
+<script>
+    // Khởi tạo Firebase
+    const firebaseConfig = {
+        apiKey: "AIzaSyBPFn2-Fr0TPNoNk3lHkVtpUgXQPGxKX1M",
+        authDomain: "quizz-app-188eb.firebaseapp.com",
+        projectId: "quizz-app-188eb",
+        storageBucket: "quizz-app-188eb.firebasestorage.app",
+        messagingSenderId: "464711854201",
+        appId: "1:464711854201:web:26a8aa827e92d6ad9e8ca8",
+        measurementId: "G-LN0C9Q9K3P"
+    };
+
+    // Khởi tạo Firebase
+    firebase.initializeApp(firebaseConfig);
+
+    // Hàm đăng nhập với Google
+    function signInWithGoogle() {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        provider.setCustomParameters({
+            prompt: 'select_account'
+        });
+        
+        firebase.auth().signInWithPopup(provider)
+            .then((result) => {
+                // Thêm delay 1 giây trước khi lấy token
+                return new Promise(resolve => setTimeout(() => {
+                    result.user.getIdToken().then(token => resolve(token));
+                }, 1000));
+            })
+            .then((idToken) => {
+                // Gửi token đến server
+                return fetch('/login/google/callback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        idToken: idToken
+                    })
+                });
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = data.redirect;
+                } else {
+                    alert('Đăng nhập thất bại: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Có lỗi xảy ra khi đăng nhập');
+            });
+    }
+</script>
 
 <style>
 .auth-container {
@@ -135,6 +205,53 @@
     box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
 }
 
+.divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 1.5rem 0;
+}
+
+.divider::before,
+.divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.divider span {
+    padding: 0 1rem;
+    color: #718096;
+    font-size: 0.875rem;
+}
+
+.btn-google {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.75rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    color: #4a5568;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-google:hover {
+    background: #f7fafc;
+    border-color: #cbd5e0;
+}
+
+.btn-google img {
+    width: 20px;
+    height: 20px;
+}
+
 .auth-footer {
     text-align: center;
     margin-top: 2rem;
@@ -174,6 +291,62 @@
     background-color: #f0fff4;
     color: #2f855a;
     border: 1px solid #9ae6b4;
+}
+
+/* Modal styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    overflow: auto;
+}
+
+.modal-content {
+    background-color: white;
+    margin: 10% auto;
+    padding: 2rem;
+    border-radius: 20px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.modal-header h2 {
+    color: #2d3748;
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.close {
+    color: #718096;
+    font-size: 1.5rem;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close:hover {
+    color: #2d3748;
+}
+
+.modal-body {
+    padding: 1rem 0;
+}
+
+#firebaseui-auth-container {
+    margin-top: 1rem;
 }
 </style>
 {% endblock %}
