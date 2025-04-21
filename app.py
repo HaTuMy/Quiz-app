@@ -234,17 +234,37 @@ def create_quiz():
             title = request.form['title']
             start_time = datetime.strptime(request.form['start_time'], '%Y-%m-%dT%H:%M')
             end_time = datetime.strptime(request.form['end_time'], '%Y-%m-%dT%H:%M')
-            duration = int(request.form['duration'])
+            duration = request.form['duration']
             max_attempts = request.form.get('max_attempts')
             is_public = request.form.get('is_public') == 'on'
             
-            if not all([title, start_time, end_time, duration, max_attempts, is_public]):
-                flash('Please fill in all required fields', 'error')
+            # Validate required fields
+            if not all([title, start_time, end_time, duration]):
+                flash('Vui lòng điền đầy đủ các trường bắt buộc', 'error')
                 return redirect(url_for('create_quiz'))
 
             if start_time >= end_time:
-                flash('End time must be after start time', 'error')
+                flash('Thời gian kết thúc phải sau thời gian bắt đầu', 'error')
                 return redirect(url_for('create_quiz'))
+
+            try:
+                duration = int(duration)
+                if duration <= 0:
+                    flash('Thời gian làm bài phải lớn hơn 0', 'error')
+                    return redirect(url_for('create_quiz'))
+            except ValueError:
+                flash('Thời gian làm bài phải là số nguyên', 'error')
+                return redirect(url_for('create_quiz'))
+
+            if max_attempts:
+                try:
+                    max_attempts = int(max_attempts)
+                    if max_attempts <= 0:
+                        flash('Số lần làm bài phải lớn hơn 0', 'error')
+                        return redirect(url_for('create_quiz'))
+                except ValueError:
+                    flash('Số lần làm bài phải là số nguyên', 'error')
+                    return redirect(url_for('create_quiz'))
 
             # Create quiz
             quiz_id = db.quizzes.insert_one({
@@ -253,17 +273,24 @@ def create_quiz():
                 'start_time': start_time,
                 'end_time': end_time,
                 'duration': duration,
-                'max_attempts': int(max_attempts) if max_attempts else None,
+                'max_attempts': max_attempts if max_attempts else None,
                 'is_public': is_public,
-                'quiz_code': generate_quiz_code()
+                'quiz_code': generate_quiz_code(),
+                'created_at': datetime.utcnow()
             }).inserted_id
             
+            # Get questions data
             questions = request.form.getlist('questions[]')
             question_types = request.form.getlist('question_types[]')
             correct_answers = request.form.getlist('correct_answers[]')
             
+            if not questions:
+                flash('Vui lòng thêm ít nhất một câu hỏi', 'error')
+                db.quizzes.delete_one({'_id': quiz_id})  # Delete the quiz if no questions
+                return redirect(url_for('create_quiz'))
+
+            # Create questions
             for i in range(len(questions)):
-                # Create question
                 question_id = db.questions.insert_one({
                     'quiz_id': quiz_id,
                     'question_text': questions[i],
@@ -280,15 +307,13 @@ def create_quiz():
                                 'answer_text': option
                             })
             
-            quiz = db.quizzes.find_one({'_id': quiz_id})
-            flash(f'Quiz created successfully! Quiz Code: {quiz["quiz_code"]}')
+            flash('Tạo bài kiểm tra thành công!', 'success')
             return redirect(url_for('manage_quizzes'))
             
         except Exception as e:
-            app.logger.error(f'Error creating quiz: {str(e)}')
-            flash('An error occurred while creating the quiz', 'error')
-            return redirect(url_for('teacher_dashboard'))
-    
+            flash(f'Có lỗi xảy ra: {str(e)}', 'error')
+            return redirect(url_for('create_quiz'))
+
     return render_template('create_quiz.html')
 
 @app.route('/manage-quizzes')
@@ -566,34 +591,51 @@ def submit_quiz(quiz_id, attempt_id):
         flash('An error occurred while submitting the quiz', 'error')
         return redirect(url_for('student_dashboard'))
 
-@app.route('/quiz_results/<quiz_id>/<attempt_id>')
+@app.route('/quiz_results/<quiz_id>')
 @login_required
-def quiz_results(quiz_id, attempt_id):
+def quiz_results(quiz_id):
     try:
         quiz = db.quizzes.find_one({'_id': ObjectId(quiz_id)})
-        attempt = db.quiz_attempts.find_one({
-            '_id': ObjectId(attempt_id),
-            'student_id': session['user_id']
-        })
-        
-        if not quiz or not attempt:
-            flash('Quiz or attempt not found', 'error')
-            return redirect(url_for('student_dashboard'))
+        if not quiz:
+            flash('Bài kiểm tra không tồn tại', 'error')
+            return redirect(url_for('manage_quizzes'))
+
+        # Check if user is teacher and owns the quiz
+        if session['role'] == 'teacher':
+            if str(quiz['teacher_id']) != session['user_id']:
+                flash('Bạn không có quyền xem kết quả của bài kiểm tra này', 'error')
+                return redirect(url_for('manage_quizzes'))
             
-        if not attempt['submitted']:
-            flash('Quiz has not been submitted yet', 'error')
-            return redirect(url_for('take_quiz', quiz_id=quiz_id, attempt_id=attempt_id))
+            # Get all attempts for this quiz
+            results = list(db.quiz_attempts.find({'quiz_id': ObjectId(quiz_id), 'submitted': True}))
             
-        return render_template('quiz_results.html', 
-                            quiz=quiz, 
-                            attempt=attempt,
-                            score=attempt['score'],
-                            total_questions=len(quiz['questions']))
+            # Get student information for each attempt
+            for result in results:
+                student = db.users.find_one({'_id': ObjectId(result['student_id'])})
+                result['student'] = student
+                
+            return render_template('quiz_results.html', 
+                                quiz=quiz,
+                                results=results)
+        else:
+            # For students, show only their attempts
+            attempts = list(db.quiz_attempts.find({
+                'quiz_id': ObjectId(quiz_id),
+                'student_id': ObjectId(session['user_id']),
+                'submitted': True
+            }))
+            
+            if not attempts:
+                flash('Bạn chưa làm bài kiểm tra này', 'info')
+                return redirect(url_for('home'))
+                
+            return render_template('student_quiz_results.html',
+                                quiz=quiz,
+                                attempts=attempts)
                             
     except Exception as e:
-        app.logger.error(f'Error displaying quiz results: {str(e)}')
-        flash('An error occurred while displaying the results', 'error')
-        return redirect(url_for('student_dashboard'))
+        flash(f'Có lỗi xảy ra: {str(e)}', 'error')
+        return redirect(url_for('manage_quizzes' if session['role'] == 'teacher' else 'home'))
 
 @app.route('/profile')
 def profile():
@@ -718,7 +760,7 @@ def reset_password(token):
     
     return render_template('reset_password.html')
 
-@app.route('/quiz/<int:quiz_id>/toggle-visibility')
+@app.route('/quiz/<quiz_id>/toggle-visibility')
 def toggle_quiz_visibility(quiz_id):
     if 'user_id' not in session or session['role'] != 'teacher':
         flash('Bạn không có quyền thực hiện hành động này!')
@@ -727,14 +769,14 @@ def toggle_quiz_visibility(quiz_id):
     quiz = db.quizzes.find_one({'_id': ObjectId(quiz_id)})
     
     # Kiểm tra quyền truy cập
-    if quiz['teacher_id'] != ObjectId(session['user_id']):
+    if str(quiz['teacher_id']) != session['user_id']:
         flash('Bạn không có quyền thay đổi trạng thái bài kiểm tra này!')
         return redirect(url_for('manage_quizzes'))
     
     # Đảo ngược trạng thái công khai
-    db.quizzes.update_one({'_id': ObjectId(quiz['_id'])}, {'$set': {'is_public': not quiz['is_public']}})
+    db.quizzes.update_one({'_id': ObjectId(quiz_id)}, {'$set': {'is_public': not quiz['is_public']}})
     
-    status = "công khai" if quiz['is_public'] else "riêng tư"
+    status = "công khai" if not quiz['is_public'] else "riêng tư"
     flash(f'Trạng thái bài kiểm tra đã được thay đổi thành {status}!')
     return redirect(url_for('manage_quizzes'))
 
