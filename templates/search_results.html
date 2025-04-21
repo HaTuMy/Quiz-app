@@ -13,7 +13,7 @@
                 <div class="quiz-card">
                     <div class="quiz-header">
                         <h3>{{ quiz.title }}</h3>
-                        <p class="teacher-name">Giáo viên: {{ quiz.teacher.username }}</p>
+                        <p class="teacher-name">Giáo viên: {{ quiz.teacher_name}}</p>
                         <span class="visibility-badge {{ 'public' if quiz.is_public else 'private' }}">
                             <i class="fas {{ 'fa-globe' if quiz.is_public else 'fa-lock' }}"></i>
                             {{ 'Công khai' if quiz.is_public else 'Riêng tư' }}
