@@ -4,8 +4,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import OperationalError
 from flask_migrate import Migrate
+import firebase_admin
+from firebase_admin import auth as firebase_auth, credentials
+from firebase_admin import auth
 from sqlalchemy.exc import IntegrityError
 import random
 import string
@@ -127,6 +131,48 @@ def login():
         
         flash('Email hoặc mật khẩu không đúng!')
     return render_template('login.html')
+
+# Khởi tạo Firebase Admin SDK nếu chưa
+# (Chỉ cần init 1 lần)
+if not firebase_admin._apps:
+    cred = credentials.Certificate(r'secret_k\math-quiz-151e5-firebase-adminsdk-fbsvc-51c5125931.json')
+    firebase_admin.initialize_app(cred)
+
+@app.route('/login/google', methods=['POST'])
+def login_google():
+    id_token = request.json.get('idToken')
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        email = decoded_token['email']
+        user = User.query.filter_by(email=email).first()
+        if user:
+            session['user_id'] = user.id
+            session['role'] = user.role
+            return jsonify({'success': True, 'redirect': '/home'})
+        else:
+            # Người dùng mới, cần chọn Role
+            session['temp_email'] = email
+            return jsonify({'success': False, 'redirect': '/choose-role'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
+    
+@app.route('/choose-role', methods=['GET', 'POST'])
+def choose_role():
+    if request.method == 'POST':
+        role = request.form.get('role')
+        temp_email = session.get('temp_email')
+        if temp_email and role:
+            new_user = User(email=temp_email, role=role)
+            db.session.add(new_user)
+            db.session.commit()
+            session['user_id'] = new_user.id
+            session['role'] = new_user.role
+            session.pop('temp_email', None)
+            return redirect('/home')
+        else:
+            return "Lỗi xác nhận tài khoản!", 400
+    return render_template('choose_role.html')
+
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -454,11 +500,18 @@ def search_quiz():
     if not keyword:
         return redirect(url_for('home'))
     
-    # Tìm kiếm tất cả bài kiểm tra
+    # Find all quizzes matching the keyword, eagerly load teacher and profile
     quizzes = Quiz.query.join(User, Quiz.teacher_id == User.id)\
+                       .options(joinedload(Quiz.teacher).joinedload(User.profile))\
                        .filter(Quiz.title.ilike(f'%{keyword}%'))\
                        .all()
     
+    # Add teacher_name attribute to each quiz
+    for quiz in quizzes:
+        teacher = quiz.teacher
+        profile = teacher.profile[0] if teacher.profile else None
+        quiz.teacher_name = profile.full_name if profile and profile.full_name else teacher.username
+ 
     return render_template('search_results.html', 
                          quizzes=quizzes, 
                          keyword=keyword)

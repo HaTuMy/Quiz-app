@@ -25,13 +25,18 @@
         // Google login
         function googleLogin() {
             const provider = new GoogleAuthProvider();
+        
+            // Bắt buộc Google hiển thị chọn tài khoản mỗi lần
+            provider.setCustomParameters({
+                prompt: 'select_account'
+            });
+        
             signInWithPopup(auth, provider)
                 .then(async (result) => {
                     const user = result.user;
                     const idToken = await user.getIdToken();  
                     console.log("Token lấy được:", idToken);
-        
-                    // Gửi token về server để xác thực
+                
                     const response = await fetch('/login/google', {
                         method: 'POST',
                         headers: {
@@ -39,10 +44,10 @@
                         },
                         body: JSON.stringify({ idToken: idToken }),
                     });
-        
+                
                     if (response.ok) {
                         alert('Đăng nhập thành công!');
-                        window.location.href = '/home'; // hoặc / nếu bạn thích
+                        window.location.href = '/home';
                     } else {
                         const errorData = await response.json();
                         alert('Đăng nhập thất bại: ' + (errorData.message || 'Lỗi không xác định'));
@@ -53,6 +58,7 @@
                     alert("Đăng nhập thất bại: " + error.message);
                 });
         }
+        
         
 
         // Gán hàm googleLogin cho window để HTML có thể gọi
