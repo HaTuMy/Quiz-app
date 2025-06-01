@@ -17,6 +17,7 @@ from firebase_admin import credentials, firestore, auth
 import certifi
 import sys
 from time_utils import convert_utc_to_local, convert_local_to_utc
+import secrets
 
 load_dotenv()
 
@@ -85,8 +86,7 @@ def init_db() -> None:
 # Khởi tạo Firebase Admin SDK
 cred = credentials.Certificate("serviceAccountKey.json")
 firebase_admin.initialize_app(cred)
-firestore_client = firestore.client()
-auth = firebase_admin.auth
+
 
 # Configure session cookie settings
 app.config['SESSION_COOKIE_SECURE'] = True
@@ -1154,117 +1154,43 @@ def toggle_quiz_visibility(quiz_id):
     flash(f'Trạng thái bài kiểm tra đã được thay đổi thành {status}!')
     return redirect(url_for('manage_quizzes'))
 
-@app.route('/login/google')
-def login_google():
-    return render_template('login_google.html')
+@app.route('/firebase-login', methods=['POST'])
+def firebase_login():
+    data = request.get_json()
+    id_token = data.get('idToken')
 
-@app.route('/login/google/callback', methods=['POST'])
-def google_callback():
+    if not id_token:
+        return jsonify({"error": "No ID token provided"}), 400
+
     try:
-        if 'firebase_admin' not in globals() or firestore_client is None:
-            return jsonify({'success': False, 'error': 'Firebase chưa được khởi tạo'}), 500
-            
-        # Lấy token ID từ request
-        id_token = request.json.get('idToken')
-        
-        if not id_token:
-            return jsonify({'success': False, 'error': 'Không tìm thấy token'}), 400
-            
-        # Xác thực token với Firebase
         decoded_token = auth.verify_id_token(id_token)
         uid = decoded_token['uid']
-        email = decoded_token['email']
+        email = decoded_token.get('email')
         name = decoded_token.get('name', email.split('@')[0])
         
-        # Kiểm tra xem người dùng đã tồn tại chưa
+        # Tìm user trong database theo email
         user = get_user_by_email(email)
         if not user:
-            # Tạo người dùng mới
-            hashed_password = generate_password_hash(str(random.getrandbits(128)))  # Tạo mật khẩu ngẫu nhiên
-            user = create_user(email, name, hashed_password, 'student')  # Mặc định là student
+            # Tạo user mới nếu chưa tồn tại
+            random_password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+            hashed_password = generate_password_hash(random_password)
             
-            # Tạo profile cho người dùng mới
-            create_user_profile(str(user['_id']), name)
+            user = create_user(
+                email=email,
+                username=email.split('@')[0],
+                password=hashed_password,
+                role='student'
+            )
 
-        # Đăng nhập người dùng
+        # Tạo session
         session['user_id'] = str(user['_id'])
         session['username'] = user['username']
         session['role'] = user['role']
-        return jsonify({'success': True, 'redirect': url_for('home')})
-        
+
+        return jsonify({"message": "Đăng nhập thành công"})
     except Exception as e:
-        print(f"Error in google_callback: {str(e)}")  # Log lỗi
-        return jsonify({'success': False, 'error': str(e)}), 400
-
-@app.route('/register/google/callback', methods=['POST'])
-def register_google_callback():
-    try:
-        if 'firebase_admin' not in globals() or firestore_client is None:
-            return jsonify({'success': False, 'error': 'Firebase chưa được khởi tạo'}), 500
-            
-        data = request.get_json()
-        id_token = data.get('idToken')
-        role = data.get('role')
-
-        if not id_token or not role:
-            return jsonify({'success': False, 'error': 'Thiếu thông tin cần thiết'}), 400
-
-        # Xác thực token với Firebase
-        decoded_token = auth.verify_id_token(id_token)
-        uid = decoded_token['uid']
-        email = decoded_token['email']
-        name = decoded_token.get('name', email.split('@')[0])
-
-        # Kiểm tra xem email đã tồn tại chưa
-        existing_user = get_user_by_email(email)
-        if existing_user:
-            return jsonify({'success': False, 'error': 'Email đã được sử dụng'}), 400
-
-        # Tạo username từ email nếu không có name
-        username = name
-        # Nếu username đã tồn tại, thêm số ngẫu nhiên
-        while db.users.find_one({"username": username}):
-            username = f"{name}{random.randint(1000, 9999)}"
-
-        # Tạo mật khẩu ngẫu nhiên cho tài khoản
-        password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
-
-        # Tạo user mới
-        new_user = create_user(
-            email=email,
-            username=username,
-            password=generate_password_hash(password),
-            role=role
-        )
-
-        # Tạo profile cho user
-        create_user_profile(
-            user_id=str(new_user['_id']),
-            full_name=name
-        )
-
-        # Đăng nhập người dùng
-        session['user_id'] = str(new_user['_id'])
-        session['username'] = new_user['username']
-        session['role'] = new_user['role']
-
-        # Chuyển hướng dựa trên role
-        redirect_url = url_for('teacher_dashboard') if role == 'teacher' else url_for('home')
-
-        return jsonify({
-            'success': True,
-            'redirect': redirect_url
-        })
-
-    except auth.InvalidIdTokenError:
-        return jsonify({'success': False, 'error': 'Token không hợp lệ'}), 401
-    except auth.ExpiredIdTokenError:
-        return jsonify({'success': False, 'error': 'Token đã hết hạn'}), 401
-    except auth.RevokedIdTokenError:
-        return jsonify({'success': False, 'error': 'Token đã bị thu hồi'}), 401
-    except Exception as e:
-        print(f"Error in register_google_callback: {str(e)}")
-        return jsonify({'success': False, 'error': 'Có lỗi xảy ra khi đăng ký'}), 500
+        print(f"Lỗi xác thực token Firebase: {e}")
+        return jsonify({"error": "Token không hợp lệ"}), 401
 
 @app.route('/health')
 def health_check():
