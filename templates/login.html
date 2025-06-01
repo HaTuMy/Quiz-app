@@ -4,274 +4,253 @@
 
 {% block content %}
 <div class="auth-container">
-    <div class="auth-box">
-        <div class="auth-header">
-            <i class="fas fa-user-circle"></i>
-            <h2>Đăng nhập</h2>
-        </div>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="alert alert-{{ messages[0][0] }}">
-                    <i class="fas fa-info-circle"></i>
-                    {{ messages[0][1] }}
-                </div>
-            {% endif %}
-        {% endwith %}
-        <form method="POST">
-            <div class="form-group">
-                <label for="email"><i class="fas fa-envelope"></i> Email</label>
-                <div class="input-group">
-                    <input type="email" id="email" name="email" required placeholder="Nhập email của bạn">
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="password"><i class="fas fa-lock"></i> Mật khẩu</label>
-                <div class="input-group">
-                    <input type="password" id="password" name="password" required placeholder="Nhập mật khẩu">
-                </div>
-            </div>
-            <button type="submit" class="btn-auth">
-                <i class="fas fa-sign-in-alt"></i> Đăng nhập
-            </button>
-        </form>
-        
-        <div class="divider">
-            <span>hoặc</span>
-        </div>
-        
-        <button onclick="signInWithGoogle()" class="btn-google">
-            <img src="https://www.google.com/favicon.ico" alt="Google">
-            Đăng nhập với Google
-        </button>
-        
-        <div class="auth-footer">
-            <p>Chưa có tài khoản? <a href="{{ url_for('register') }}"><i class="fas fa-user-plus"></i> Đăng ký</a></p>
-            <p><a href="{{ url_for('forgot_password') }}"><i class="fas fa-key"></i> Quên mật khẩu?</a></p>
-        </div>
+  <div class="auth-box">
+    <div class="auth-header">
+      <i class="fas fa-user-circle"></i>
+      <h2>Đăng nhập</h2>
     </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="alert alert-{{ messages[0][0] }}">
+        <i class="fas fa-info-circle"></i>
+        {{ messages[0][1] }}
+      </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" novalidate>
+      <div class="form-group">
+        <label for="email"><i class="fas fa-envelope"></i> Email</label>
+        <input type="email" id="email" name="email" required placeholder="Nhập email của bạn" />
+      </div>
+
+      <div class="form-group">
+        <label for="password"><i class="fas fa-lock"></i> Mật khẩu</label>
+        <input type="password" id="password" name="password" required placeholder="Nhập mật khẩu" />
+      </div>
+
+      <button type="submit" class="btn-auth">
+        <i class="fas fa-sign-in-alt"></i> Đăng nhập
+      </button>
+    </form>
+
+    <div class="divider"><span>hoặc</span></div>
+
+    <button class="btn-google" onclick="signInWithGoogle()">
+      <img src="https://www.google.com/favicon.ico" alt="Google" />
+      Đăng nhập với Google
+    </button>
+
+    <div class="auth-footer">
+      <p>Chưa có tài khoản? <a href="{{ url_for('register') }}"><i class="fas fa-user-plus"></i> Đăng ký</a></p>
+      <p><a href="{{ url_for('forgot_password') }}"><i class="fas fa-key"></i> Quên mật khẩu?</a></p>
+    </div>
+  </div>
 </div>
 
-<!-- Firebase App (the core Firebase SDK) -->
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+  import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
 
-<script>
-    // Khởi tạo Firebase
-    const firebaseConfig = {
-        apiKey: "AIzaSyBPFn2-Fr0TPNoNk3lHkVtpUgXQPGxKX1M",
-        authDomain: "quizz-app-188eb.firebaseapp.com",
-        projectId: "quizz-app-188eb",
-        storageBucket: "quizz-app-188eb.firebasestorage.app",
-        messagingSenderId: "464711854201",
-        appId: "1:464711854201:web:26a8aa827e92d6ad9e8ca8",
-        measurementId: "G-LN0C9Q9K3P"
-    };
+  const firebaseConfig = {
+    apiKey: "AIzaSyDNqsDc1H4Pk3cBJOl78x2pmnrNRk9L3FI",
+    authDomain: "mathquiz-6d4e1.firebaseapp.com",
+    projectId: "mathquiz-6d4e1",
+    storageBucket: "mathquiz-6d4e1.appspot.com",
+    messagingSenderId: "443731607395",
+    appId: "1:443731607395:web:6251bebb92bc852c5ddd56",
+    measurementId: "G-J6612CYWPT"
+  };
 
-    // Khởi tạo Firebase
-    firebase.initializeApp(firebaseConfig);
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
 
-    // Hàm đăng nhập với Google
-    function signInWithGoogle() {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        provider.setCustomParameters({
-            prompt: 'select_account'
-        });
-        
-        firebase.auth().signInWithPopup(provider)
-            .then((result) => {
-                // Thêm delay 1 giây trước khi lấy token
-                return new Promise(resolve => setTimeout(() => {
-                    result.user.getIdToken().then(token => resolve(token));
-                }, 1000));
-            })
-            .then((idToken) => {
-                // Gửi token đến server
-                return fetch('/login/google/callback', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        idToken: idToken
-                    })
-                });
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = data.redirect;
-                } else {
-                    alert('Đăng nhập thất bại: ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Có lỗi xảy ra khi đăng nhập');
-            });
-    }
+  window.signInWithGoogle = function() {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+       prompt: 'select_account'
+    });
+
+    signInWithPopup(auth, provider)
+      .then(result => result.user.getIdToken())
+      .then(idToken => fetch('/firebase-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken })
+      }))
+      .then(res => {
+        if (res.ok) {
+          window.location.href = '/home';
+        } else {
+          alert("Đăng nhập thất bại!");
+        }
+      })
+      .catch(error => {
+        console.error("Login error:", error);
+        alert("Có lỗi khi đăng nhập Google.");
+      });
+  };
 </script>
 
 <style>
-.auth-container {
+  .auth-container {
     min-height: 100vh;
     display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
     padding: 2rem;
     margin-top: -60px;
-}
+  }
 
-.auth-box {
-    width: 100%;
+  .auth-box {
     max-width: 400px;
-    background: white;
+    width: 100%;
+    background: #fff;
     padding: 2.5rem;
     border-radius: 20px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
-}
+    box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+  }
 
-.auth-header {
+  .auth-header {
     text-align: center;
     margin-bottom: 2rem;
-}
+  }
 
-.auth-header i {
+  .auth-header i {
     font-size: 3rem;
     color: #667eea;
     margin-bottom: 1rem;
-}
+  }
 
-.auth-header h2 {
-    color: #2d3748;
+  .auth-header h2 {
     font-size: 1.8rem;
+    color: #2d3748;
     font-weight: 600;
-}
+  }
 
-.form-group {
+  .form-group {
     margin-bottom: 1.5rem;
-}
+  }
 
-.form-group label {
+  label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     margin-bottom: 0.5rem;
     color: #4a5568;
     font-size: 0.95rem;
-}
+  }
 
-.form-group label i {
+  label i {
     color: #667eea;
-}
+  }
 
-.input-group {
-    position: relative;
-}
-
-.input-group input {
+  input[type="email"],
+  input[type="password"] {
     width: 100%;
     padding: 0.8rem 1rem;
     border: 2px solid #e2e8f0;
     border-radius: 12px;
     font-size: 1rem;
     transition: all 0.3s ease;
-}
+  }
 
-.input-group input:focus {
+  input:focus {
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
     outline: none;
-}
+  }
 
-.btn-auth {
+  .btn-auth {
     width: 100%;
     padding: 1rem;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
     border: none;
     border-radius: 12px;
-    font-size: 1rem;
+    color: white;
     font-weight: 500;
+    font-size: 1rem;
     cursor: pointer;
-    transition: all 0.3s ease;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-}
+    transition: all 0.3s ease;
+  }
 
-.btn-auth:hover {
+  .btn-auth:hover {
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-}
+  }
 
-.divider {
+  .divider {
     display: flex;
     align-items: center;
     text-align: center;
     margin: 1.5rem 0;
-}
+  }
 
-.divider::before,
-.divider::after {
+  .divider::before,
+  .divider::after {
     content: '';
     flex: 1;
     border-bottom: 1px solid #e2e8f0;
-}
+  }
 
-.divider span {
+  .divider span {
     padding: 0 1rem;
-    color: #718096;
     font-size: 0.875rem;
-}
+    color: #718096;
+  }
 
-.btn-google {
+  .btn-google {
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.75rem;
-    width: 100%;
     padding: 0.75rem;
-    background: white;
-    border: 1px solid #e2e8f0;
     border-radius: 8px;
-    color: #4a5568;
-    font-size: 0.95rem;
+    border: 1px solid #e2e8f0;
+    background: white;
     font-weight: 500;
+    font-size: 0.95rem;
+    color: #4a5568;
     cursor: pointer;
     transition: all 0.3s ease;
-}
+  }
 
-.btn-google:hover {
-    background: #f7fafc;
-    border-color: #cbd5e0;
-}
-
-.btn-google img {
+  .btn-google img {
     width: 20px;
     height: 20px;
-}
+  }
 
-.auth-footer {
-    text-align: center;
+  .btn-google:hover {
+    background: #f7fafc;
+    border-color: #cbd5e0;
+  }
+
+  .auth-footer {
     margin-top: 2rem;
     color: #718096;
-}
+    text-align: center;
+  }
 
-.auth-footer a {
+  .auth-footer a {
     color: #667eea;
-    text-decoration: none;
     font-weight: 500;
+    text-decoration: none;
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-}
+  }
 
-.auth-footer a:hover {
+  .auth-footer a:hover {
     text-decoration: underline;
-}
+  }
 
-.alert {
+  .alert {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -279,74 +258,18 @@
     margin-bottom: 1.5rem;
     border-radius: 12px;
     font-size: 0.95rem;
-}
+  }
 
-.alert-error {
+  .alert-error {
     background-color: #fff5f5;
-    color: #c53030;
     border: 1px solid #feb2b2;
-}
+    color: #c53030;
+  }
 
-.alert-success {
+  .alert-success {
     background-color: #f0fff4;
-    color: #2f855a;
     border: 1px solid #9ae6b4;
-}
-
-/* Modal styles */
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    overflow: auto;
-}
-
-.modal-content {
-    background-color: white;
-    margin: 10% auto;
-    padding: 2rem;
-    border-radius: 20px;
-    width: 90%;
-    max-width: 400px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
-}
-
-.modal-header h2 {
-    color: #2d3748;
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin: 0;
-}
-
-.close {
-    color: #718096;
-    font-size: 1.5rem;
-    font-weight: bold;
-    cursor: pointer;
-}
-
-.close:hover {
-    color: #2d3748;
-}
-
-.modal-body {
-    padding: 1rem 0;
-}
-
-#firebaseui-auth-container {
-    margin-top: 1rem;
-}
+    color: #2f855a;
+  }
 </style>
 {% endblock %}
